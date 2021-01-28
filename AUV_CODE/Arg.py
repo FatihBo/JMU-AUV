@@ -5,11 +5,7 @@ import Pretre
 
 '增加，修改参数模块'
 
-"""
-设定多个Serial，每个Serial是一个特定功能的可调试参数
-最后将多个Serial组成一个DataFrame写入文件argument.csv中
-list xxx_name与xxx_value一一对应
-"""
+
 
 
 '''
