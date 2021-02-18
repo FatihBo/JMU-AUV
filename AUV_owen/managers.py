@@ -18,6 +18,7 @@ class CaptureManager(object):
         self.shouldshowFPS = shouldshowFPS
         self.process_mode = process_mode
         self.resize_fx_fy = None
+        self.data = None #储存回传的数据
         self._capture = capture
         self._channel = 0
         self._enteredFrame = False
@@ -89,8 +90,12 @@ class CaptureManager(object):
                     print("img processed!")
                     if self.process_mode == 'line':
                         Processed = process.imgprocess_follow_line(self._frame)
-                    elif self.process_mode == 'box':
+                    if self.process_mode == 'box':
                         Processed = process.imgprocess_detect_box(self._frame)
+                    if self.process_mode == 'adsorbate': #吸附物检测
+                        Processed = process.imgprocess_detect_adsorbate(self._frame)
+
+                    self._data = Processed.data
                     self._frame = Processed.processed
                     cv2.imshow('hsv',Processed.hsv_ranged)
 
@@ -111,9 +116,11 @@ class CaptureManager(object):
                     elif self.process_mode == 'box':
                         Processed = process.imgprocess_detect_box(self._frame)
                         cv2.imshow('rgb',Processed.rgb_ranged)
-            
+                    elif self.process_mode == 'adsorbate': #吸附物检测
+                        Processed  = process.imgprocess_detect_adsorbate(self._frame)
+                        cv2.imshow('thr',Processed.RGB_thre)
+                    self._data = Processed.data
                     self._frame = Processed.processed
-                    
 
                 if self.shouldshowFPS and self._fpsEstimate: #是否显示FPS
                     cv2.putText(self._frame,str(round(self._fpsEstimate,2)),(10,40),cv2.FONT_HERSHEY_SIMPLEX,1,color = (0,0,255))

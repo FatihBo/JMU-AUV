@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import math
+from utils import paint_chinese_opencv
 
 object_color = 'white'
 
@@ -29,7 +30,7 @@ class rect_line(object):  #水下机器人巡线的标志矩形 对象
         #以下为整型数据
         self.x_int = int(self.x)
         self.y_int = int(self.y)
-#        self.angle_int = int(self.angle)
+
         self.width_int = int(self.width)
         self.height_int = int(self.height)
         self.area = self.width_int * self.height_int #面积大小
@@ -81,13 +82,9 @@ class rect_line(object):  #水下机器人巡线的标志矩形 对象
             return int(0.4142 * abs(point1[0]-point2[0]) + abs(point1[1]-point2[1]))     
 
 
-
-
-
-
 class imgprocess_follow_line(object):
     def __init__(self,img):
-        self.original = img
+        self.original = cv2.flip(img,0)
         self.processed,self.hsv_ranged,self.rect_box = self.priorprocess(img)
 
     
@@ -221,8 +218,6 @@ class particle(object): #粒子
         self.y = xy[1]
         self.density = 0 #密集度
         self.life=False
-
-
 
 class imgprocess_detect_box(object): #寻框
     def __init__(self,img):
@@ -387,14 +382,161 @@ class imgprocess_detect_box(object): #寻框
 
         return img,inRange_rgb
 
-# img = cv2.imread(r'D:\github\Underwater-robot-competition\AUV_owen\screenshot.png')
 
-# IP_box= imgprocess_detect_box(img)
+class adsorbate_object: #吸附物对象,用于管道滤波中追踪与判定
+    def _init_(self):
+        self.x = 0
+        self.y = 0
+        self.w = 0
+        self.h = 0
+        self.area = self.w * self.h #面积
+        self.type = 0 # 1为正方形 2为圆形
+        self.lifetime = 0         
 
 
-# IP_box.cv_show('result',IP_box.processed)
-# IP_box.cv_show('inRange_rbg',IP_box.rgb_ranged)
+class imgprocess_detect_adsorbate(object):
+    def __init__(self,img):
+        self.original = img
+        self.HSVmin = np.array([0,0,0])
+        self.HSVmax = np.array([255,255,112])
+        self.hsv = cv2.cvtColor(img,cv2.COLOR_BGR2HSV)
+        self.inRange_hsv = cv2.inRange(self.hsv,self.HSVmin,self.HSVmax)
+        #self.inRange_hsv = cv2.erode(self.inRange_hsv,None,iterations=8) #腐蚀，细的变粗
+        self.inRange_hsv = cv2.dilate(self.inRange_hsv,None,iterations=2)
+        self.RGB_thre = self.inRange_hsv 
+        self.detect_data = np.array([0,0,0,0,0])
+        self.processed = self.find_adsorbate(self.original)
+    def find_adsorbate(self,img):
+        cnts = cv2.findContours(self.inRange_hsv,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)[-2]
+        cv2.waitKey(40)
+        object_list = []
+        objective = 0
+        ob_x=0
+        ob_y=0
+        ob_area=0
+        detect_result= 0
+        if cnts:
+            #for cnt in cnts:
+            cnts = sorted(cnts,key = cv2.contourArea,reverse = True)
+            cnt = cnts[0]
+            x,y,w,h = cv2.boundingRect(cnt)
+            
+            if(w*h>3000 and w*h < 50000):
+                if(w-h < 1000):
+                    #cv2.rectangle(img,(x+5,y+5),(x+w-5,y+h-5),(0,0,255),3)
+                    cv2.putText(img,'area:'+str(w*h),(5,100),cv2.FONT_HERSHEY_COMPLEX,2,(0,0,0))
+                    #print('area:'+str(w*h))
+                    object_list.append([x,y,w,h]) #符合条件的存入列表
+                    
+                    #凸包点法识别方形/圆形            
+                    hull = cv2.convexHull(cnt,returnPoints = True)
+                    cv2.putText(img,str(hull.shape[0]),(x,y-10),cv2.FONT_HERSHEY_COMPLEX,2,(0,0,0),2)
+
+                    Hough_ROI = self.inRange_hsv[y:y+int(h),x:x+int(w)] 
+                    circles = cv2.HoughCircles(Hough_ROI,cv2.HOUGH_GRADIENT,1,70,param1 = 10,param2=13.5,minRadius=0,maxRadius=1000)
+                    if circles is not None: #若存在
+                        if(hull.shape[0]>31):
+                            #cv2.putText(img,'CIRCLE!',(x,y),cv2.FONT_HERSHEY_PLAIN,2,(0,0,255))
+                            cv2.circle(img,(x+int(w/2),y+int(h/2)),int(w/2-3),(0,0,255),5)
+                            detect_result = 2 #圆为2
+                            objective = 1
+                            ob_x = x
+                            ob_y = y
+                            ob_area = w*h
+                    else:
+                        if(hull.shape[0]<25):
+                            #cv2.putText(img,'SQUARE!',(x,y),cv2.FONT_HERSHEY_PLAIN,2,(255,0,0))
+                            cv2.rectangle(img,(x+5,y+5),(x+w-5,y+h-5),(255,0,0),3)
+                            detect_result = 1 #方为1
+                            objective = 1
+                            ob_x = x
+                            ob_y = y
+                            ob_area = w*h
+
+                    # if detect_result:
+                    #     print(hull.shape[0],detect_result)      
         
+        self.detect_data = np.array([objective,detect_result,ob_x,ob_y,ob_area])
+   
+        
+        return img
 
+
+class pipe:
+    def __init__(self):
+        self.pipe_life = [] #是否存在，存在为1，不存在为0
+        self.pipe_x = [] #x坐标
+        self.pipe_y = [] #y坐标
+        self.pipe_area = [] #面积
+        self.pipe_type = [] #类型 1为方，2为圆
+        self.detect_result = [] #判定结果
+        self.pipe_len = 0
+        self.pipe_ob_nums = 0
+        self.pipe_Maxlength = 40
+        self.thre = 2 #判定
+        self.pass_fps = 9
+
+    def list_find(self,i): #life数据为0时，寻找其前pass_fps帧，判定是否存在
+        if i>=self.pass_fps:
+            sub_life = self.pipe_life[i-8:i]
+        else:
+            return False
+        
+        if sub_life.count(1)>3: #若前pass_fps帧存在次数大于3次          
+            return True
+        else:
+            return False
+
+    def lifetime_judge(self): #生命周期判定，若超过thre次触发判定为圆/方，则为圆/方
+        start = 0
+        end = 0
+        continue_time = 0
+        for i,life in enumerate(self.pipe_life):
+            if life == 0:  #如果没有，那么有两种可能，1：之前有过，没检测到 2：之前就根本没有
+                if start!= 0: #如果已开始,在前寻找
+                    if self.list_find(i): #往前pass_fps帧找到了
+                        end = i
+                        continue_time = end - start
+                        if continue_time > self.thre: #触发判定
+                            square_num = self.pipe_type[start:end].count(1) #方的标记数量
+                            circle_num = self.pipe_type[start:end].count(2) #圆的标记数量   
+                            if square_num > circle_num:
+                                self.detect_result.append(1) #判定为方
+                            else:
+                                self.detect_result.append(2) #判定为圆
+                                
+                    else: #往前pass_fps帧，啥也没有,重置
+                        start = 0
+                        end = 0
+                        continue_time = 0
+                        self.detect_result.append(0)
+            else: #有存在目标
+                if start==0: #还未记录
+                    start = i
+                else:
+                    end = i
+                    continue_time = end - start
+                    if continue_time > self.thre: #触发判定
+                        square_num = self.pipe_type[start:end].count(1) #方的标记数量
+                        circle_num = self.pipe_type[start:end].count(2) #圆的标记数量   
+                        if square_num > circle_num:
+                            self.detect_result.append(1)
+                        else:
+                            self.detect_result.append(2)
+                    else:
+                        self.detect_result.append(0)
+        if len(self.detect_result)>0:
+            return self.detect_result[-1] 
+        else:
+            return 0
+
+    def reboot_judge(self): #重启检查
+        if len(self.pipe_life) > self.pipe_Maxlength:
+            del self.pipe_life[0]
+            del self.pipe_type[0]
+            del self.pipe_x[0]
+            del self.pipe_y[0]
+            del self.pipe_area[0]
+        
 
         
