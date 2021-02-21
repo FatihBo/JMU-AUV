@@ -19,8 +19,6 @@ class Cameo(object):
         else:
             self._captureManager = CaptureManager(cv2.VideoCapture(self._camera), self._windowManager, True,False,False)
         
-
-
      
     def run(self):
         self._windowManager.createWindow()
@@ -47,20 +45,23 @@ if __name__ == "__main__":
 
     MODE = -1 #0/1为本机摄像头，-1为输入视频文件
     video_st = 1 #第 video_st 个视频
-    video_file = r'D:\github\Underwater-robot-competition\AUV_owen\dataset'
+    video_file = r'D:\github\Underwater-robot-competition\AUV_owen\dataset\recut'
     mode = 'line' #调用巡线模式处理算法
     #mode = 'box' #调用检测框模式处理算法
+    mode = 'adsorbate'
 
     video_file_list = os.listdir(video_file)
     video_file = video_file + '\\' + video_file_list[video_st]
     print(video_file)
 
     #video_file = r'D:\github\Underwater-robot-competition\underwater_video\a.avi'
-
+    start_time = time.time()
     Cam = Cameo(MODE,video_file)
-    Cam._captureManager.shouldprocess = True   #开启图像处理
+    Cam._captureManager.shouldprocess = 'True'   #开启图像处理
     Cam._captureManager.shouldMirrorPreview = False
     Cam._captureManager.shouldshowFPS = True   #开启帧率显示
     Cam._captureManager.resize_fx_fy = (0.5,0.5) #对视频进行放缩
     Cam._captureManager.process_mode = mode
     Cam.run()
+
+   
